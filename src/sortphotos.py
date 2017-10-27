@@ -232,7 +232,7 @@ class ExifTool(object):
 
 
 
-def sortPhotos(src_dir, dest_dir, sort_format, rename_format, recursive=False,
+def sortPhotos(src_dir, dest_dir, sort_format, rename_format, rename_suffix, recursive=False,
         copy_files=False, test=False, remove_duplicates=True, day_begins=0,
         additional_groups_to_ignore=['File'], additional_tags_to_ignore=[],
         use_only_groups=None, use_only_tags=None, verbose=True):
@@ -252,6 +252,9 @@ def sortPhotos(src_dir, dest_dir, sort_format, rename_format, recursive=False,
         date format code for how you want your files renamed
         (https://docs.python.org/2/library/datetime.html#strftime-and-strptime-behavior)
         None to not rename file
+    rename_suffix : str
+        string to append to the filename. if not None and --rename is not None to, the suffix string gets added
+        to the date format string. else the suffix is appended to the original filename
     recursive : bool
         True if you want src_dir to be searched recursively for files (False to search only in top-level of src_dir)
     copy_files : bool
@@ -374,10 +377,19 @@ def sortPhotos(src_dir, dest_dir, sort_format, rename_format, recursive=False,
 
         # rename file if necessary
         filename = os.path.basename(src_file)
+        suffix = ""
+
+        if rename_suffix is not None and rename_suffix not in ['File', 'file']:
+            suffix = "_" + rename_suffix
+        elif rename_suffix in ['File', 'file']:
+            suffix = "_" + os.path.splitext(filename)[0]
 
         if rename_format is not None:
             _, ext = os.path.splitext(filename)
-            filename = date.strftime(rename_format) + ext.lower()
+            filename = date.strftime(rename_format) + suffix + ext.lower()
+        elif rename_format is None and rename_suffix is not None:
+            name, ext = os.path.splitext(filename)
+            filename = name + suffix + ext.lower()
 
         # setup destination file
         dest_file = os.path.join(dest_file.encode('utf-8'), filename.encode('utf-8'))
@@ -467,6 +479,8 @@ def main():
                         help="rename file using format codes \n\
     https://docs.python.org/2/library/datetime.html#strftime-and-strptime-behavior. \n\
     default is None which just uses original filename")
+    parser.add_argument('--suffix', type=str, default=None, help="add a suffix to the file's name. if \n\
+    'File' or 'file' is used, the original filename will be used as suffix")
     parser.add_argument('--keep-duplicates', action='store_true',
                         help='If file is a duplicate keep it anyway (after renaming).')
     parser.add_argument('--day-begins', type=int, default=0, help='hour of day that new day begins (0-23), \n\
@@ -493,7 +507,7 @@ def main():
     # parse command line arguments
     args = parser.parse_args()
 
-    sortPhotos(args.src_dir, args.dest_dir, args.sort, args.rename, args.recursive,
+    sortPhotos(args.src_dir, args.dest_dir, args.sort, args.rename, args.suffix, args.recursive,
         args.copy, args.test, not args.keep_duplicates, args.day_begins,
         args.ignore_groups, args.ignore_tags, args.use_only_groups,
         args.use_only_tags, not args.silent)
