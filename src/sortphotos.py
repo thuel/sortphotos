@@ -248,6 +248,7 @@ def sortPhotos(src_dir, dest_dir, sort_format, rename_format, rename_suffix, rec
     sort_format : str
         date format code for how you want your photos sorted
         (https://docs.python.org/2/library/datetime.html#strftime-and-strptime-behavior)
+        or "no" if photos should only be renamed.
     rename_format : str
         date format code for how you want your files renamed
         (https://docs.python.org/2/library/datetime.html#strftime-and-strptime-behavior)
@@ -367,13 +368,14 @@ def sortPhotos(src_dir, dest_dir, sort_format, rename_format, rename_suffix, rec
 
 
         # create folder structure
-        dir_structure = date.strftime(sort_format)
-        dirs = dir_structure.split('/')
-        dest_file = dest_dir
-        for thedir in dirs:
-            dest_file = os.path.join(dest_file, thedir)
-            if not os.path.exists(dest_file):
-                os.makedirs(dest_file)
+        if sort_format != "no":
+            dir_structure = date.strftime(sort_format)
+            dirs = dir_structure.split('/')
+            dest_file = dest_dir
+            for thedir in dirs:
+                dest_file = os.path.join(dest_file, thedir)
+                if not os.path.exists(dest_file) and not test:
+                    os.makedirs(dest_file)
 
         # rename file if necessary
         filename = os.path.basename(src_file)
@@ -392,7 +394,10 @@ def sortPhotos(src_dir, dest_dir, sort_format, rename_format, rename_suffix, rec
             filename = name + suffix + ext.lower()
 
         # setup destination file
-        dest_file = os.path.join(dest_file.encode('utf-8'), filename.encode('utf-8'))
+        if sort_format != "no":
+            dest_file = os.path.join(dest_file.encode('utf-8'), filename.encode('utf-8'))
+        else:
+            dest_file = os.path.join(os.path.dirname(src_file.encode('utf-8')), filename.encode('utf-8'))
         dest_file = dest_file.decode('utf-8')
         root, ext = os.path.splitext(dest_file)
 
@@ -474,7 +479,9 @@ def main():
     https://docs.python.org/2/library/datetime.html#strftime-and-strptime-behavior. \n\
     Use forward slashes / to indicate subdirectory(ies) (independent of your OS convention). \n\
     The default is '%%Y/%%m-%%b', which separates by year then month \n\
-    with both the month number and name (e.g., 2012/02-Feb).")
+    with both the month number and name (e.g., 2012/02-Feb). \n\
+    Deactivate sorting of the photos with the string 'no'. This is useful in case \n\
+    one wants to make use only of the --rename option.")
     parser.add_argument('--rename', type=str, default=None,
                         help="rename file using format codes \n\
     https://docs.python.org/2/library/datetime.html#strftime-and-strptime-behavior. \n\
