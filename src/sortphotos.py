@@ -232,7 +232,7 @@ class ExifTool(object):
 
 
 
-def sortPhotos(src_dir, dest_dir, sort_format, rename_format, rename_suffix, recursive=False,
+def sortPhotos(src_dir, dest_dir, sort_format, rename_format, rename_prefix, rename_suffix, recursive=False,
         copy_files=False, test=False, remove_duplicates=True, day_begins=0,
         additional_groups_to_ignore=['File'], additional_tags_to_ignore=[],
         use_only_groups=None, use_only_tags=None, verbose=True):
@@ -253,9 +253,16 @@ def sortPhotos(src_dir, dest_dir, sort_format, rename_format, rename_suffix, rec
         date format code for how you want your files renamed
         (https://docs.python.org/2/library/datetime.html#strftime-and-strptime-behavior)
         None to not rename file
+    rename_prefix : str
+        string to prefix the filename with. if not None and --rename is not None too, the prefix string gets added
+        to the date format string. else the prefix is prepended to the original filename. If the string is 'File' or
+        'file' the original filename will be used as prefix. If the string is 'Pardir' or 'pardir' the name of
+        the parent directory will be used as prefix
     rename_suffix : str
-        string to append to the filename. if not None and --rename is not None to, the suffix string gets added
-        to the date format string. else the suffix is appended to the original filename
+        string to append to the filename. if not None and --rename is not None too, the suffix string gets added
+        to the date format string. else the suffix is appended to the original filename. If the string is 'File' or
+        'file' the original filename will be used as suffix. If the string is 'Pardir' or 'pardir' the name of
+        the parent directory will be used as suffix
     recursive : bool
         True if you want src_dir to be searched recursively for files (False to search only in top-level of src_dir)
     copy_files : bool
@@ -379,19 +386,29 @@ def sortPhotos(src_dir, dest_dir, sort_format, rename_format, rename_suffix, rec
 
         # rename file if necessary
         filename = os.path.basename(src_file)
-        suffix = ""
+        suffix = "" #eventually not needed
+        prefix = "" #eventually not needed
 
-        if rename_suffix is not None and rename_suffix not in ['File', 'file']:
+        if rename_suffix is not None and rename_suffix not in ['File', 'file', 'Pardir', 'pardir']:
             suffix = "_" + rename_suffix
         elif rename_suffix in ['File', 'file']:
             suffix = "_" + os.path.splitext(filename)[0]
+        elif rename_suffix in ['Pardir', 'pardir']:
+            suffix = "_" + os.path.basename(os.path.dirname(src_file))
+
+        if rename_prefix is not None and rename_prefix not in ['File', 'file', 'Pardir', 'pardir']:
+            prefix = "_" + rename_prefix
+        elif rename_prefix in ['File', 'file']:
+            prefix = os.path.splitext(filename)[0] + "_"
+        elif rename_prefix in ['Pardir', 'pardir']:
+            prefix = os.path.basename(os.path.dirname(src_file)) + "_"
 
         if rename_format is not None:
             _, ext = os.path.splitext(filename)
-            filename = date.strftime(rename_format) + suffix + ext.lower()
-        elif rename_format is None and rename_suffix is not None:
+            filename = prefix + date.strftime(rename_format) + suffix + ext.lower()
+        elif rename_format is None and (rename_suffix is not None or rename_prefix is not None):
             name, ext = os.path.splitext(filename)
-            filename = name + suffix + ext.lower()
+            filename = prefix + name + suffix + ext.lower()
 
         # setup destination file
         if sort_format != "no":
@@ -486,8 +503,12 @@ def main():
                         help="rename file using format codes \n\
     https://docs.python.org/2/library/datetime.html#strftime-and-strptime-behavior. \n\
     default is None which just uses original filename")
+    parser.add_argument('--prefix', type=str, default=None, help="add a prefix to the file's name. if \n\
+    'File' or 'file' is used, the original filename will be used as prefix. If 'Pardir' or 'pardir' is \n\
+    used, the parent directory's name is used as prefix")
     parser.add_argument('--suffix', type=str, default=None, help="add a suffix to the file's name. if \n\
-    'File' or 'file' is used, the original filename will be used as suffix")
+    'File' or 'file' is used, the original filename will be used as suffix. If 'Pardir' or 'pardir' is \n\
+    used, the parent directory's name is used as suffix")
     parser.add_argument('--keep-duplicates', action='store_true',
                         help='If file is a duplicate keep it anyway (after renaming).')
     parser.add_argument('--day-begins', type=int, default=0, help='hour of day that new day begins (0-23), \n\
@@ -514,8 +535,8 @@ def main():
     # parse command line arguments
     args = parser.parse_args()
 
-    sortPhotos(args.src_dir, args.dest_dir, args.sort, args.rename, args.suffix, args.recursive,
-        args.copy, args.test, not args.keep_duplicates, args.day_begins,
+    sortPhotos(args.src_dir, args.dest_dir, args.sort, args.rename, args.prefix, args.suffix, 
+        args.recursive, args.copy, args.test, not args.keep_duplicates, args.day_begins,
         args.ignore_groups, args.ignore_tags, args.use_only_groups,
         args.use_only_tags, not args.silent)
 
