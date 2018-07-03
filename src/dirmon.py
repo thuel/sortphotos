@@ -13,7 +13,7 @@ def init_state(p):
     d = {}
     for root, subdirs, filenames in os.walk(p):
         for f in filenames:
-            d[hashlib.sha256(f).hexdigest()] = root
+            d[hashlib.sha256(f.encode('utf-8')).hexdigest()] = root
     return d
 
 def save_state(d, filename):
@@ -44,7 +44,7 @@ def update_check_file(state, rootdir, filename):
     update_dict = load_state(filename)
     for root, subdirs, filenames in os.walk(rootdir):
         for f in filenames:
-            filehex = hashlib.sha256(f).hexdigest()
+            filehex = hashlib.sha256(f.encode('utf-8')).hexdigest()
             state_value = state.get(filehex, None)
             if state_value is not None:
                 if state_value != root:
