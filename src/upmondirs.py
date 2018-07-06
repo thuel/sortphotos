@@ -23,20 +23,34 @@ def move_files(d, root=r"."):
     d: directory as loaded by load_changes.
     r: path to root of monitored directory tree on backup.
     """
+    logging.debug("Parameters for move_files: d: {}, root: {}".format(d, root))
     if root is None:
         root=r"."
     for key in d:
         src = os.path.normpath(root + "/" + key)
         dst = os.path.normpath(root + "/" + d[key])
+        dst_dir = os.path.dirname(dst)
         try:
+            if not os.path.exists(dst_dir):
+                logging.debug("Trying to make dir: {}".format(dst_dir))
+                os.makedirs(dst_dir)
             logging.debug("Moving {} to {}".format(src, dst))
-            #os.rename(src, dst)
+            os.rename(src, dst)
         except:
-            logging.debug("Couldn't move {} to {}. Directory either\
+            logging.debug("Couldn't move {} to {}. File either\
                           doesn't exist or is already moved.".format(src, dst))
 
 def rm_subdirs(sd, r):
-    logging.debug("subdirs: {}".format(sd))
+    """ Remove empty subdirs.
+
+    sd: list of subdirectories.
+    r: path to target directory (monitor root).
+    """
+    for subdir in sd:
+        dirpath = os.path.normpath(r + "/" + subdir)
+        if not os.listdir(dirpath):
+            logging.debug("Removing directory: {}".format(dirpath))
+            os.removedirs(dirpath)
 
 def main(check_file, rootdir):
     d = load_changes(check_file)
@@ -45,7 +59,8 @@ def main(check_file, rootdir):
         if files != {}:
             move_files(files, rootdir)
         subdirs = d['subdirs']
-        if subdirs != []:
+        logging.debug("subdirs in main: {}".format(subdirs))
+        if subdirs:
             rm_subdirs(subdirs, rootdir)
     else:
         logging.info("No directories renamed. Therefore nothing to do.")
