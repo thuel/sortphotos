@@ -1,8 +1,32 @@
+""" Work heavly based on https://thomassileo.name/blog/2013/12/12/tracking-changes-in-directories-with-python/
+"""
+
 from __future__ import print_function, unicode_literals
 import os
 import json
 import hashlib
 import argparse
+
+def filehash(filepath, blocksize=4096):
+    """ Return the hash hexdigest for the file `filepath', processing the file
+    by chunk of `blocksize'.
+
+    :type filepath: str
+    :param filepath: Path to file
+
+    :type blocksize: int
+    :param blocksize: Size of the chunk when processing the file
+
+    """
+    sha = hashlib.sha256()
+    with open(filepath, 'rb') as fp:
+        while 1:
+            data = fp.read(blocksize)
+            if data:
+                sha.update(data)
+            else:
+                break
+    return sha.hexdigest()
 
 def init_state(p):
     """ Initialize the state of the filenames and paths
@@ -10,11 +34,20 @@ def init_state(p):
     p: path to root directory for which an inventory should be
       created.
     """
-    d = {}
-    for root, subdirs, filenames in os.walk(p):
+    files = []
+    subdirs = []
+    for root, dirs, filenames in os.walk(p):
+        for subdir in dirs:
+            subdirs.append(os.path.relpath(os.path.join(root, subdir), p))
+
         for f in filenames:
-            d[hashlib.sha256(f.encode('utf-8')).hexdigest()] = root
-    return d
+            files.append(os.path.relpath(os.path.join(root, f), p))
+
+    index = {}
+    for f in files:
+        index[f] = os.path.getmtime(os.path.join(p, f))
+
+    return dict(files=files, subdirs=subdirs, index=index)
 
 def save_state(d, filename):
     """ Save the json representation of a dict object to filename.
@@ -34,6 +67,19 @@ def load_state(filename):
     with open(filename, 'r') as f:
         return json.loads(f.read())
 
+def compute_diff(dir_base, dir_cmp):
+    data = {}
+    data['deleted'] = list(set(dir_cmp['files']) - set(dir_base['files']))
+    data['created'] = list(set(dir_base['files']) - set(dir_cmp['files']))
+    data['updated'] = []
+    data['deleted_dirs'] = list(set(dir_cmp['subdirs']) - set(dir_base['subdirs']))
+
+    for f in set(dir_cmp['files']).intersection(set(dir_base['files'])):
+        if dir_base['index'][f] != dir_cmp['index'][f]:
+            data['updated'].append(f)
+
+    return data
+
 def update_check_file(state, rootdir, filename):
     """ Update the control file in which files with changing paths are recorded.
 
@@ -42,15 +88,25 @@ def update_check_file(state, rootdir, filename):
     filename: name of the file in which updates are recorded
     """
     update_dict = load_state(filename)
-    for root, subdirs, filenames in os.walk(rootdir):
-        for f in filenames:
-            filehex = hashlib.sha256(f.encode('utf-8')).hexdigest()
-            state_value = state.get(filehex, None)
-            if state_value is not None:
-                if state_value != root:
-                    update_dict[f] = {'old' : state[filehex], 'new' : root}
-    if update_dict != {}:
+    latest_state = init_state(rootdir)
+    diff = compute_diff(latest_state, state)
+    files = update_dict.get('files', {})
+    for deleted_file in diff['deleted']:
+        if os.path.basename(deleted_file) in (os.path.basename(newf) for newf in diff['created']):
+            new_file = ""
+            for newf in diff['created']:
+                if os.path.basename(newf) == os.path.basename(deleted_file):
+                    new_file = newf
+            files[deleted_file] = new_file
+    update_dict['files'] = files # on the backup side: check if dirname exists else mkdir first.
+
+    subdirs = update_dict.get('subdirs', [])
+    subdirs.extend(diff['deleted_dirs'])
+    update_dict['subdirs'] = list(set(subdirs)) # on the backup side: check if there are no regular files in the dir before removing it.
+
+    if update_dict != load_state(filename):
         save_state(update_dict, filename)
+
 
 def main(state_file, check_file, rootdir):
     if not os.path.exists(check_file):
