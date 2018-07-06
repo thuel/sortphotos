@@ -35,10 +35,18 @@ def move_files(d, root=r"."):
             logging.debug("Couldn't move {} to {}. Directory either\
                           doesn't exist or is already moved.".format(src, dst))
 
+def rm_subdirs(sd, r):
+    logging.debug("subdirs: {}".format(sd))
+
 def main(check_file, rootdir):
     d = load_changes(check_file)
     if d != {}:
-        move_files(d, rootdir)
+        files = d['files']
+        if files != {}:
+            move_files(files, rootdir)
+        subdirs = d['subdirs']
+        if subdirs != []:
+            rm_subdirs(subdirs, rootdir)
     else:
         logging.info("No directories renamed. Therefore nothing to do.")
 
