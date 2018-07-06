@@ -102,7 +102,7 @@ def update_check_file(state, rootdir, filename):
 
     subdirs = update_dict.get('subdirs', [])
     subdirs.extend(diff['deleted_dirs'])
-    update_dict['subdirs'] = subdirs # on the backup side: check if there are no regular files in the dir before removing it.
+    update_dict['subdirs'] = list(set(subdirs)) # on the backup side: check if there are no regular files in the dir before removing it.
     
     if update_dict != load_state(filename):
         save_state(update_dict, filename)
