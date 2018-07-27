@@ -130,7 +130,7 @@ def get_oldest_timestamp(data, additional_groups_to_ignore, additional_tags_to_i
     # save src file
     src_file = data['SourceFile']
 
-    # ssetup tags to ignore
+    # setup tags to ignore
     ignore_groups = ['ICC_Profile'] + additional_groups_to_ignore
     ignore_tags = ['SourceFile', 'XMP:HistoryWhen'] + additional_tags_to_ignore
 
@@ -535,7 +535,7 @@ def main():
     # parse command line arguments
     args = parser.parse_args()
 
-    sortPhotos(args.src_dir, args.dest_dir, args.sort, args.rename, args.prefix, args.suffix, 
+    sortPhotos(args.src_dir, args.dest_dir, args.sort, args.rename, args.prefix, args.suffix,
         args.recursive, args.copy, args.test, not args.keep_duplicates, args.day_begins,
         args.ignore_groups, args.ignore_tags, args.use_only_groups,
         args.use_only_tags, not args.silent)
