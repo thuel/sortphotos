@@ -83,7 +83,16 @@ def update_tags(d, root=r'.'):
 
 
 
-def main(check_file, rootdir):
+def main():
+    # parse command line args
+    parser = argparse.ArgumentParser()
+    parser.add_argument("checkfile", type=str, help="Path to check file.")
+    parser.add_argument("root", type=str, help="Path to root of checked directory.")
+    args = parser.parse_args()
+
+    check_file = args.checkfile
+    rootdir = args.root
+
     d = load_changes(check_file)
     # first check for files moved
     if d['pathchecker'].get('files', None) or d['pathchecker'].get('subdirs', None):
@@ -104,8 +113,4 @@ def main(check_file, rootdir):
         logging.info("No tags changed. Therefore nothing to do.")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("checkfile", type=str, help="Path to check file.")
-    parser.add_argument("root", type=str, help="Path to root of checked directory.")
-    args = parser.parse_args()
-    main(args.checkfile, args.root)
+    main()

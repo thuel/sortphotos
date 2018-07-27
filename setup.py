@@ -14,6 +14,8 @@ setup(
     entry_points={
         'console_scripts': [
           'sortphotos = src.sortphotos:main',
+          'dirmon = src.dirmon:main',
+          'upmondirs = src.upmondirs:main'
         ]
       }
 )

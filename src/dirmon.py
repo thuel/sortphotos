@@ -143,17 +143,8 @@ def update_tag_check_file(state, rootdir, filename):
 
     save_state(check_dict, filename)
 
-def main(state_file, check_file, rootdir):
-    if not os.path.exists(check_file):
-        state = init_state(rootdir)
-        save_state(state, state_file)
-        save_state({'pathchecker': {}, 'tagchecker': {}}, check_file)
-    else:
-        state = load_state(state_file)
-        update_path_check_file(state, rootdir, check_file)
-        update_tag_check_file(state, rootdir, check_file)
-
-if __name__ == "__main__":
+def main():
+    # parse command line arguments.
     parser = argparse.ArgumentParser()
     parser.add_argument("--statefile", "-s", type=str,
                         default=r"state_file.json",
@@ -164,4 +155,19 @@ if __name__ == "__main__":
     parser.add_argument("--root", "-r", type=str,
                         default=r".", help="path to the directory to be monitored.")
     args = parser.parse_args()
-    main(args.statefile, args.checkfile, args.root)
+
+    state_file = args.statefile
+    check_file = args.checkfile
+    rootdir = args.root
+
+    if not os.path.exists(check_file):
+        state = init_state(rootdir)
+        save_state(state, state_file)
+        save_state({'pathchecker': {}, 'tagchecker': {}}, check_file)
+    else:
+        state = load_state(state_file)
+        update_path_check_file(state, rootdir, check_file)
+        update_tag_check_file(state, rootdir, check_file)
+
+if __name__ == "__main__":
+    main()
