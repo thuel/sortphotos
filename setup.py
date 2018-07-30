@@ -13,9 +13,9 @@ setup(
     license='MIT License',
     entry_points={
         'console_scripts': [
-          'sortphotos = src.sortphotos:main',
-          'dirmon = src.dirmon:main',
-          'upmondirs = src.upmondirs:main'
+          'sortphotos = sortphotos.sortphotos:main',
+          'dirmon = sortphotos.dirmon:main',
+          'upmondirs = sortphotos.upmondirs:main'
         ]
       }
 )
