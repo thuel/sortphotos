@@ -15,7 +15,8 @@ setup(
         'console_scripts': [
           'sortphotos = sortphotos.sortphotos:main',
           'dirmon = sortphotos.dirmon:main',
-          'upmondirs = sortphotos.upmondirs:main'
+          'upmondirs = sortphotos.upmondirs:main',
+          'exifqry = sortphotos.exifqry:main'
         ]
       }
 )
