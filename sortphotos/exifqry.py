@@ -17,6 +17,7 @@ import face_recognition
 from face_recognition import face_locations
 from face_recognition import load_image_file
 from face_recognition import compare_faces
+from face_recognition import face_recognition_cli
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -154,6 +155,14 @@ def num_pattern_in_tags(src, tag, num=1, recursive=True):
     return result
 
 def flatten_tags(tag_dicts):
+    """ Return a list of tag_dicts where parent tags are removed.
+
+    tag_dicts: list of tag dicts, where a tag dict has the following form:
+      {filename: [hierarchical tag 1, hierarchical tag 2, ...]}
+    returns: list of tag_dicts with parent tags removed from hierarchical
+      tags: {filename: [tag 1, tag 2, ...]}
+    """
+
     result = {}
     for tag_dict in tag_dicts:
         if tag_dict:
@@ -166,7 +175,7 @@ def flatten_tags(tag_dicts):
     return result
 
 def scan_known_people_in_dict(known_people_dict):
-    """ Return tuple of two list with names and face encodings.
+    """ Return two lists. One with names and one with face encodings.
 
     known_people_dict: dict as returned from num_pattern_in_tags(src, 'leute\|.*\|.*', num=1)
       and processed by flatten_tags().
@@ -217,16 +226,21 @@ def load_names_encodings_lists(filename):
         names, encodings = pickle.loads(f.read())
     return names, encodings
 
-def save_best_matches(src, dst, recursive=True):
-    """ Save names and face encodings for best matches to file.
+def best_matches(src, recursive=True):
+    """ Return a list of names and a list of the best matching face encoding for those names.
 
-    src: folder to search for images and persons.
-    dst: file to save names and encodings lists.
+    src: directory to search for images and persons or a list containing a list
+      of names and a list with corresponding encodings.
     recursive: indicate if src should be searched recursive.
+    return: list of names and list of the best matching encodings to these names.
     """
-    names, encodings = scan_known_people_in_dict(flatten_tags(num_pattern_in_tags(src, '^leute\|.*\|.*$', num=1)))
+    if not isinstance(src, str):
+        names, encodings = src
+    else:
+        names, encodings = scan_known_people_in_dict(flatten_tags(num_pattern_in_tags(src, '^leute\|.*\|.*$', 1, recursive)))
     unique_names = set(names)
-    best_matches = []
+    best_matches_names = []
+    best_matches_encodings = []
     for name in unique_names:
         matches = [encoding for n, encoding in zip(names, encodings) if n == name]
         e_counts = []
@@ -241,8 +255,49 @@ def save_best_matches(src, dst, recursive=True):
         print(name, e_counts)
         name_max = max(e_counts)
         index = e_counts.index(name_max)
-        best_matches.append((name, matches[index]))
-    return best_matches
+        best_matches_names.append(name)
+        best_matches_encodings.append(matches[index])
+
+    return best_matches_names, best_matches_encodings
+
+def tag_recognized_faces(known_faces, image_to_check, with_tags=True, recursive=True, tolerance=0.6, show_distance=False, cpus=-1):
+    """ Add xmp hierarchical subject with name of known faces to fotos.
+
+    known_faces: directory with fotos with known persons or a list containing a list
+      of names and a list with corresponding encodings.
+    image_to_check: path to the directory with fotos to recognize and tag faces in.
+    recursive: indicate if image_to_check should be searched recursive.
+    """
+    if with_tags is None:
+        with_tags = True
+    if recursive is None:
+        recursive = True
+
+    if not isinstance(known_faces, str):
+        logging.debug("Working with names and encodings already in memory")
+        known_names, known_face_encodings = known_faces
+    elif with_tags:
+        logging.debug("Getting names and encodings from files with xmp:hierarchicalsubject tags.")
+        known_names, known_face_encodings = scan_known_people_in_dict(flatten_tags(num_pattern_in_tags(src, '^leute\|.*\|.*$', 1, recursive)))
+    else:
+        logging.debug("Getting names and encodings with face_recognition_cli.scan_known_people.")
+        known_names, known_face_encodings = face_recognition_cli.scan_known_people(src)
+
+    # Multi-core processing only supported on Python 3.4 or greater
+    if (sys.version_info < (3, 4)) and cpus != 1:
+        logging.warning("WARNING: Multi-processing support requires Python 3.4 or greater. Falling back to single-threaded processing!")
+        cpus = 1
+
+    if os.path.isdir(image_to_check):
+        if cpus == 1:
+            [face_recognition_cli.test_image(image_file, known_names, known_face_encodings,
+                                             tolerance, show_distance) for image_file in face_recognition_cli.image_files_in_folder(image_to_check)]
+        else:
+            logging.debug("Start multicore processing")
+            face_recognition_cli.process_images_in_process_pool(face_recognition_cli.image_files_in_folder(image_to_check),
+                                                                known_names, known_face_encodings, cpus, tolerance, show_distance)
+    else:
+        face_recognition_cli.test_image(image_to_check, known_names, known_face_encodings, tolerance, show_distance)
 
 def main():
     """ Main function to run the tools.

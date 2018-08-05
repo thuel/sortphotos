@@ -71,7 +71,7 @@ def update_tags(d, root=r'.'):
         dst = os.path.normpath(root + "/" + key)
         subjs, hiersubjs, adate, mdate = d[key]
         cmd = "exiftool -overwrite_original -sep ',' '-xmp:Subject={}' \
-              '-xmp:HierarchicalSubject={}' {}".format(",".join(subjs), ",".join(hiersubjs), dst)
+              '-xmp:HierarchicalSubject={}' {}".format(",".join(subjs), ",".join(hiersubjs), dst.replace(" ", "\ "))
         logging.debug("Command to be run: {}".format(cmd))
         try:
             out = sp.check_output([cmd], shell=True)

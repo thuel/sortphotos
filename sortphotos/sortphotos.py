@@ -225,7 +225,7 @@ class ExifTool(object):
             return json.loads(self.execute(*args))
         except ValueError:
             sys.stdout.write('No files to parse or invalid data\n')
-            exit()
+            sys.exit()
 
 
 # ---------------------------------------
