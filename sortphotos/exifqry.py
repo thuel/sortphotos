@@ -10,13 +10,14 @@ import argparse
 import logging
 import threading
 import dill as pickle
+import numpy as np
 from multiprocessing import Process, Pool
 
 from sortphotos import ExifTool
 import face_recognition
 from face_recognition import face_locations
 from face_recognition import load_image_file
-from face_recognition import compare_faces
+from face_recognition import face_distance
 from face_recognition import face_recognition_cli
 
 logging.basicConfig(level=logging.DEBUG)
@@ -243,20 +244,23 @@ def best_matches(src, recursive=True):
     best_matches_encodings = []
     for name in unique_names:
         matches = [encoding for n, encoding in zip(names, encodings) if n == name]
+        if len(matches) == 1:
+            continue
         e_counts = []
         for m in matches:
-            r = compare_faces(matches, m, 0.4)
-            count = 0
-            for similar in r:
-                if similar:
-                    count += 1
-            e_counts.append(count)
+            r = face_distance(matches, m)
+            r2 = np.where((r>0.))
+            r = r[r2]
+            if r is not []:
+                e_counts.append(r.sum())
+            print(e_counts)
 
-        print(name, e_counts)
-        name_max = max(e_counts)
-        index = e_counts.index(name_max)
-        best_matches_names.append(name)
-        best_matches_encodings.append(matches[index])
+        if e_counts is not []:
+            name_min = min(e_counts)
+            print("Minimum from list: {}".format(min(e_counts)))
+            index = e_counts.index(name_min)
+            best_matches_names.append(name)
+            best_matches_encodings.append(matches[index])
 
     return best_matches_names, best_matches_encodings
 
