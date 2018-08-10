@@ -7,6 +7,7 @@ import json
 import hashlib
 import argparse
 import subprocess as sp
+import threading
 
 def filehash(filepath, blocksize=4096):
     """ Return the hash hexdigest for the file `filepath', processing the file
@@ -44,13 +45,22 @@ def init_state(p):
         for f in filenames:
             files.append(os.path.relpath(os.path.join(root, f), p))
 
-    index = {}
-    for f in files:
-        outp = sp.check_output(['exiftool', '-j', '-xmp:Subject', '-xmp:HierarchicalSubject', os.path.join(p, f)])
+    def exifdata(output, root, f):
+        filepath = os.path.join(root, f)
+        outp = sp.check_output(['exiftool', '-j', '-xmp:Subject', '-xmp:HierarchicalSubject', filepath])
         tag_dict = json.loads(outp)
-        #print(tag_dict)
-        filepath = os.path.join(p, f)
-        index[f] = (os.path.getatime(filepath), os.path.getmtime(filepath), tag_dict[0].get('Subject', None), tag_dict[0].get('HierarchicalSubject', None))
+        output[f] = (os.path.getatime(filepath), os.path.getmtime(filepath), tag_dict[0].get('Subject', None), tag_dict[0].get('HierarchicalSubject', None))
+
+    index = {}
+    threads = []
+
+    for f in files:
+        exif_thread = threading.Thread(target=exifdata, args=(index, p, f))
+        exif_thread.start()
+        threads.append(exif_thread)
+
+    for thread in threads:
+        thread.join()
 
     index2 = {}
     for f in files:
