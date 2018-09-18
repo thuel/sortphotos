@@ -9,8 +9,10 @@ import sys
 import argparse
 import logging
 import threading
+import itertools
 import dill as pickle
 import numpy as np
+import multiprocessing
 from multiprocessing import Process, Pool
 
 from sortphotos import ExifTool
@@ -175,6 +177,26 @@ def flatten_tags(tag_dicts):
                 result[filename] = flat_tags
     return result
 
+def list_of_people_tags(src):
+    """ Return a dict of hierarchical tags where the key is equal to the flat tag.
+
+    src:  either a list of hierarchical tags or the source to directory with fotos
+      with exif xmp hierarchical tags.
+    """
+    result = []
+    if isinstance(src, list):
+        result = src
+    else:
+        data = num_pattern_in_tags(src, 'leute.*', num=-1)
+        for d in data:
+             for i in list(d.values()):
+                 r = []
+                 for entry in i:
+                     r.append(entry)
+                 result.extend(r)
+    return {i.split('|')[-1]: i for i in list(set(result))}
+
+
 def scan_known_people_in_dict(known_people_dict):
     """ Return two lists. One with names and one with face encodings.
 
@@ -264,22 +286,34 @@ def best_matches(src, recursive=True):
 
     return best_matches_names, best_matches_encodings
 
-def tag_recognized_faces(known_faces, image_to_check, with_tags=True, recursive=True, tolerance=0.6, show_distance=False, cpus=-1):
+def tag_recognized_faces(known_faces, image_to_check, with_tags=True, recursive=True, tolerance=0.6, show_distance=False, cpus=-1, tags_to_apply={}):
     """ Add xmp hierarchical subject with name of known faces to fotos.
+
+    Adapted version from face_recognition_cli by Adam Geitgey (https://adamgeitgey.com/)
 
     known_faces: directory with fotos with known persons or a list containing a list
       of names and a list with corresponding encodings.
     image_to_check: path to the directory with fotos to recognize and tag faces in.
+    with_tags: indicates wheter the fotos in known_faces contain xmp tags with peoples
+      names.
     recursive: indicate if image_to_check should be searched recursive.
+    tags_to_apply: dict of names and their corresponding hierarchical tag. E.g. as returned
+      by list_of_people_tags. If an empty dict ist given, then only the names are attached
+      to the xmp subject (no hierarchical subject).
     """
     if with_tags is None:
         with_tags = True
     if recursive is None:
         recursive = True
+    if cpus is None:
+        cpus=-1
+    if tags_to_apply is None:
+        tags_to_apply = {}
 
     if not isinstance(known_faces, str):
         logging.debug("Working with names and encodings already in memory")
         known_names, known_face_encodings = known_faces
+        logging.debug("tagging with these names: {}".format(known_names))
     elif with_tags:
         logging.debug("Getting names and encodings from files with xmp:hierarchicalsubject tags.")
         known_names, known_face_encodings = scan_known_people_in_dict(flatten_tags(num_pattern_in_tags(src, '^leute\|.*\|.*$', 1, recursive)))
@@ -287,21 +321,115 @@ def tag_recognized_faces(known_faces, image_to_check, with_tags=True, recursive=
         logging.debug("Getting names and encodings with face_recognition_cli.scan_known_people.")
         known_names, known_face_encodings = face_recognition_cli.scan_known_people(src)
 
+    if recursive and os.path.isdir(image_to_check):
+        dir_list = [image_to_check]
+        for root, dirs, filenames in os.walk(image_to_check):
+            for subdir in dirs:
+                dir_list.append(os.path.join(root, subdir))
+
     # Multi-core processing only supported on Python 3.4 or greater
     if (sys.version_info < (3, 4)) and cpus != 1:
         logging.warning("WARNING: Multi-processing support requires Python 3.4 or greater. Falling back to single-threaded processing!")
         cpus = 1
 
     if os.path.isdir(image_to_check):
-        if cpus == 1:
-            [face_recognition_cli.test_image(image_file, known_names, known_face_encodings,
-                                             tolerance, show_distance) for image_file in face_recognition_cli.image_files_in_folder(image_to_check)]
+        data = []
+        for dir in dir_list:
+            if cpus == 1:
+                [face_recognition_cli.test_image(image_file, known_names, known_face_encodings,
+                                                 tolerance, show_distance) for image_file in face_recognition_cli.image_files_in_folder(dir)]
+            else:
+                logging.debug("Start multicore processing")
+                data.extend(process_images_in_process_pool(face_recognition_cli.image_files_in_folder(dir),
+                                                                    known_names, known_face_encodings, cpus, tolerance, show_distance))
+
+        data = [x for x in data if x is not None] # Eventually include unknown persons
+        data = sorted(data, key=lambda x: x[0])
+        tags = path_with_tags(data)
+        logging.debug("tags: {}".format(tags))
+        if tags_to_apply is not None:
+            logging.debug("Start getting hierarchical tags...")
+            hierarchical_tags = path_with_hierarchical_tags(tags, tags_to_apply)
+            return hierarchical_tags
         else:
-            logging.debug("Start multicore processing")
-            face_recognition_cli.process_images_in_process_pool(face_recognition_cli.image_files_in_folder(image_to_check),
-                                                                known_names, known_face_encodings, cpus, tolerance, show_distance)
+            return tags
     else:
         face_recognition_cli.test_image(image_to_check, known_names, known_face_encodings, tolerance, show_distance)
+
+def path_with_tags(data):
+    """ Return dictionary with path as keys and a list of tags as values.
+
+    Input to the function is a list of tuples with path, name, distance.
+    """
+    result = {}
+    for tpl in data:
+        logging.debug("tpl is: {}".format(tpl[0]))
+        lst = result.get(tpl[0][0], [])
+        logging.debug("lst is: {}".format(lst)) # ev. unknown persons to be checked here.
+        if lst == []:
+            lst = [tpl[0][1]]
+        else:
+            lst.append(tpl[0][1])
+        result[tpl[0][0]] = lst
+        logging.debug("At end of for loop, result is: {}".format(result))
+    return result
+
+def path_with_hierarchical_tags(data, h_tags):
+    """ Returns a dictionary with path as keys and a list of hierarchical tags as values.
+
+    Input to the function is the return value of path_with_tags, e.g. a dictionary with
+    paths as keys and a list of tags as values. Secondly the parent hierarchical tag has to
+    be provided.
+
+    data:  dictionary with pahts as keys and lists of tags/names as values
+    h_tags: list of hierarchical tags to be used
+    """
+    # TODO: Get list of known hierarchical tags / to be stored together with known faces.
+    logging.debug("h_tags: {}".format(h_tags))
+    result = {}
+    for key, value in list(data.items()):
+        tags = result.setdefault(key, [])
+        logging.debug("Checking hierarchical tags for these names: {}".format(value))
+        for name in value:
+            logging.debug("name to test: {}".format(name))
+            if name in h_tags:
+                tags.append(h_tags[name])
+            else:
+                tags.append(h_tags['unbekannt'])
+        if result[key] is not None:
+            result[key] = list(set(tags))
+        #logging.debug("result dict: {}".format(result))
+    pass
+
+def process_images_in_process_pool(images_to_check, known_names, known_face_encodings, number_of_cpus, tolerance, show_distance):
+    """ Slitly adapted version from face_recognition_cli by Adam Geitgey (https://adamgeitgey.com/)
+    """
+
+    if number_of_cpus == -1:
+        processes = None
+    else:
+        processes = number_of_cpus
+
+    # macOS will crash due to a bug in libdispatch if you don't use 'forkserver'
+    context = multiprocessing
+    if "forkserver" in multiprocessing.get_all_start_methods():
+        context = multiprocessing.get_context("forkserver")
+
+    pool = context.Pool(processes=processes)
+    logging.debug('got pool')
+
+    function_parameters = zip(
+        images_to_check,
+        itertools.repeat(known_names),
+        itertools.repeat(known_face_encodings),
+        itertools.repeat(tolerance),
+        itertools.repeat(show_distance),
+        itertools.repeat(True) # param for get_output
+    )
+
+    data = pool.starmap(face_recognition_cli.test_image, function_parameters)
+    pool.close()
+    return data
 
 def main():
     """ Main function to run the tools.
