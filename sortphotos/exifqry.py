@@ -343,11 +343,22 @@ def tag_recognized_faces(known_faces, image_to_check, with_tags=True, recursive=
                 data.extend(process_images_in_process_pool(face_recognition_cli.image_files_in_folder(dir),
                                                                     known_names, known_face_encodings, cpus, tolerance, show_distance))
 
+        helper_list = []
+        for e in data:
+            for i in e:
+                print(i)
+                helper_list.append(i)
+        data = helper_list
+        logging.debug("data as from the double for loop: {}".format(data))
         data = [x for x in data if x is not None] # Eventually include unknown persons
+        logging.debug("data before sorting it: {}".format(data))
         data = sorted(data, key=lambda x: x[0])
+        logging.debug("data after being sorted: {}".format(data))
         tags = path_with_tags(data)
         logging.debug("tags: {}".format(tags))
-        if tags_to_apply is not None:
+
+        logging.debug("tags_to_apply is: {}".format(tags_to_apply))
+        if tags_to_apply != {}:
             logging.debug("Start getting hierarchical tags...")
             hierarchical_tags = path_with_hierarchical_tags(tags, tags_to_apply)
             return hierarchical_tags
@@ -363,14 +374,14 @@ def path_with_tags(data):
     """
     result = {}
     for tpl in data:
-        logging.debug("tpl is: {}".format(tpl[0]))
-        lst = result.get(tpl[0][0], [])
+        logging.debug("tpl is: {}".format(tpl))
+        lst = result.get(tpl[0], [])
         logging.debug("lst is: {}".format(lst)) # ev. unknown persons to be checked here.
         if lst == []:
-            lst = [tpl[0][1]]
+            lst = [tpl[1]]
         else:
-            lst.append(tpl[0][1])
-        result[tpl[0][0]] = lst
+            lst.append(tpl[1])
+        result[tpl[0]] = lst
         logging.debug("At end of for loop, result is: {}".format(result))
     return result
 
@@ -398,7 +409,15 @@ def path_with_hierarchical_tags(data, h_tags):
                 tags.append(h_tags['unbekannt'])
         if result[key] is not None:
             result[key] = list(set(tags))
-        #logging.debug("result dict: {}".format(result))
+    logging.debug("result dict: {}".format(result))
+    return result
+
+def set_exif_hierarchical_tags(path, tags):
+    """ Add the hierarchical tags to xmp data of the file provided.
+
+    path:  path to file to which xmp hierarchical subjects should be added.
+    tags:  list of hierarchical tags to be applied.
+    """
     pass
 
 def process_images_in_process_pool(images_to_check, known_names, known_face_encodings, number_of_cpus, tolerance, show_distance):
