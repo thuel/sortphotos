@@ -7,7 +7,33 @@ import json
 import hashlib
 import argparse
 import subprocess as sp
-import threading
+
+import logging
+import logging.handlers as handlers
+
+from threading import Thread
+from pathlib import Path
+
+logformat = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+logging.basicConfig(format=logformat)
+
+logger=logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+handler = handlers.RotatingFileHandler('dirmon.log', maxBytes=1000, backupCount=2)
+handler.setLevel(logging.INFO)
+
+formatter = logging.Formatter(logformat)
+handler.setFormatter(formatter)
+
+logger.addHandler(handler)
+
+"""
+TODO:
+Setup the threading with input and output Queue.
+Use pathlib for paths and mtime, atime.
+Convert output Queue to index dict.
+"""
 
 def filehash(filepath, blocksize=4096):
     """ Return the hash hexdigest for the file `filepath', processing the file
@@ -55,7 +81,7 @@ def init_state(p):
     threads = []
 
     for f in files:
-        exif_thread = threading.Thread(target=exifdata, args=(index, p, f))
+        exif_thread = Thread(target=exifdata, args=(index, p, f))
         exif_thread.start()
         threads.append(exif_thread)
 
@@ -104,7 +130,7 @@ def update_path_check_file(state, rootdir, filename):
 
     state: dictionary with last known state
     rootdir: the path to the directory within which the files should be monitored
-    filename: name of the file in which updates are recorded
+    filename: name of the file in which updates are recorded (the checkfile)
     """
     check_dict = load_state(filename)
     update_dict = check_dict['pathchecker']  # Load an extisting check file
@@ -134,7 +160,7 @@ def update_tag_check_file(state, rootdir, filename):
 
     state: dictionary with last known state
     rootdir: the path to the directory within which the files should be monitored
-    filename:  name of the file in which updates are recorded.
+    filename:  name of the file in which updates are recorded (the checkfile).
     """
     check_dict = load_state(filename)
     update_dict = check_dict['tagchecker'] # load tagchecker dict from existing check file
@@ -172,7 +198,9 @@ def main():
 
     if not os.path.exists(check_file):
         state = init_state(rootdir)
+        # Save current state to state file
         save_state(state, state_file)
+        # Save control state to check file
         save_state({'pathchecker': {}, 'tagchecker': {}}, check_file)
     else:
         state = load_state(state_file)

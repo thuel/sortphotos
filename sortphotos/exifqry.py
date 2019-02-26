@@ -16,6 +16,7 @@ import multiprocessing
 from multiprocessing import Process, Pool
 
 from sortphotos import ExifTool
+from sortphotos import upmondirs
 import face_recognition
 from face_recognition import face_locations
 from face_recognition import load_image_file
@@ -196,6 +197,18 @@ def list_of_people_tags(src):
                  result.extend(r)
     return {i.split('|')[-1]: i for i in list(set(result))}
 
+def get_files_dict(paths_hiertags_dict):
+    """ Convert a dictionary with paths and hierarchical tags to a files dictionary.
+
+    paths_hiertags_dict: dict as returned by path_with_hierarchical_tags().
+    Returns: a files dictionary which is a dictionary with file paths as keys and
+      tuples of the following form as values: (list(xmp:subject), list(xmp:hierarchicalsubject),
+      access time, modified time).
+    """
+    result = {}
+    for (key1, value1), (key2, value2) in zip(paths_hiertags_dict.items(), flatten_tags([paths_hiertags_dict]).items()):
+        result[key1] = (value2, value1, os.path.getatime(key1), os.path.getmtime(key1))
+    return result
 
 def scan_known_people_in_dict(known_people_dict):
     """ Return two lists. One with names and one with face encodings.
@@ -336,8 +349,8 @@ def tag_recognized_faces(known_faces, image_to_check, with_tags=True, recursive=
         data = []
         for dir in dir_list:
             if cpus == 1:
-                [face_recognition_cli.test_image(image_file, known_names, known_face_encodings,
-                                                 tolerance, show_distance) for image_file in face_recognition_cli.image_files_in_folder(dir)]
+                data.extend([face_recognition_cli.test_image(image_file, known_names, known_face_encodings,
+                                                 tolerance, show_distance) for image_file in face_recognition_cli.image_files_in_folder(dir)])
             else:
                 logging.debug("Start multicore processing")
                 data.extend(process_images_in_process_pool(face_recognition_cli.image_files_in_folder(dir),
@@ -345,11 +358,14 @@ def tag_recognized_faces(known_faces, image_to_check, with_tags=True, recursive=
 
         helper_list = []
         for e in data:
-            for i in e:
-                print(i)
-                helper_list.append(i)
+            if e is not None:
+                for i in e:
+                    print(i)
+                    helper_list.append(i)
         data = helper_list
         logging.debug("data as from the double for loop: {}".format(data))
+        for d in data:
+            print('!!! {}'.format(d))
         data = [x for x in data if x is not None] # Eventually include unknown persons
         logging.debug("data before sorting it: {}".format(data))
         data = sorted(data, key=lambda x: x[0])
@@ -361,11 +377,13 @@ def tag_recognized_faces(known_faces, image_to_check, with_tags=True, recursive=
         if tags_to_apply != {}:
             logging.debug("Start getting hierarchical tags...")
             hierarchical_tags = path_with_hierarchical_tags(tags, tags_to_apply)
-            return hierarchical_tags
+            upmondirs.update_tags(get_files_dict(hierarchical_tags, '/'))
         else:
             return tags
     else:
         face_recognition_cli.test_image(image_to_check, known_names, known_face_encodings, tolerance, show_distance)
+
+    # Writing to tag: args for ExifTool: -xmp:hierarchicalsubject+=TAG
 
 def path_with_tags(data):
     """ Return dictionary with path as keys and a list of tags as values.
