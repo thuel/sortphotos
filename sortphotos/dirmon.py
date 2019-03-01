@@ -30,9 +30,8 @@ logger.addHandler(handler)
 
 """
 TODO:
-Setup the threading with input and output Queue.
+Replace threading with ExifTool recursive.
 Use pathlib for paths and mtime, atime.
-Convert output Queue to index dict.
 """
 
 def filehash(filepath, blocksize=4096):
@@ -55,6 +54,44 @@ def filehash(filepath, blocksize=4096):
             else:
                 break
     return sha.hexdigest()
+
+def get_exifdata(root):
+    """
+    Return a dict with tuples of exifdata for all files in root.
+
+    Recursivly travers the root directory and its subdirectories
+    and get the date time modified, date time accessed, xmp
+    subjects and xmp hierarchical subjects.
+
+    root: path to start directory in which to search for image
+      files.
+
+    returns: dict with filepaths as keys and a four-item-tuple
+      with as the value. dict(filepath: (mdate, adate, subjects,
+      hierarchicalsubjects)).
+    """
+    args = ['-j',  #json format
+            '-FileModifyDate',
+            '-FileAccessDate',
+            '-xmp:Subject',
+            '-xmp:HierarchicalSubject',
+            '-r',  #recursive
+            root
+           ]
+    with ExifTool(verbose=verbose) as e:
+        sys.stdout.flush()
+        meta = e.get_metadata(*args)
+
+    return {
+        str(Path(data.get('SourceFile', None)).relative_to(Path(root))):
+        (data.get('FileAccessDate', None),
+         data.get('FileModifyDate', None),
+         data.get('Subject', None),
+         data.get('HierarchicalSubject', None))
+        for data
+        in meta
+    }
+
 
 def init_state(p):
     """ Initialize the state of the filenames and paths
