@@ -3,10 +3,14 @@
 
 from __future__ import print_function, unicode_literals
 import os
+import sys
 import json
 import hashlib
 import argparse
 import subprocess as sp
+from sortphotos import ExifTool
+from datetime import datetime
+import time
 
 import logging
 import logging.handlers as handlers
@@ -30,8 +34,7 @@ logger.addHandler(handler)
 
 """
 TODO:
-Replace threading with ExifTool recursive.
-Use pathlib for paths and mtime, atime.
+Eventually extend use of pathlib for handling paths.
 """
 
 def filehash(filepath, blocksize=4096):
@@ -54,6 +57,21 @@ def filehash(filepath, blocksize=4096):
             else:
                 break
     return sha.hexdigest()
+
+def etdate2stamp(date, fmt='%Y%m%d %H%M%S%z'):
+    """
+    Return timestamp of date given from exiftool.
+
+    date: string of date to convert.
+    """
+    if date is None:
+        return None
+    try:
+        d = datetime.strptime(date.replace(':',''), fmt)
+        stamp = time.mktime(d.timetuple())
+        return stamp
+    except Exception as e:
+        logger.error(e)
 
 def get_exifdata(root):
     """
@@ -78,14 +96,16 @@ def get_exifdata(root):
             '-r',  #recursive
             root
            ]
-    with ExifTool(verbose=verbose) as e:
+    with ExifTool(verbose='verbose') as e:
         sys.stdout.flush()
         meta = e.get_metadata(*args)
 
+    logger.debug("meta is: {}".format(meta))
+
     return {
         str(Path(data.get('SourceFile', None)).relative_to(Path(root))):
-        (data.get('FileAccessDate', None),
-         data.get('FileModifyDate', None),
+        (etdate2stamp(data.get('FileAccessDate', None)),
+         etdate2stamp(data.get('FileModifyDate', None)),
          data.get('Subject', None),
          data.get('HierarchicalSubject', None))
         for data
@@ -99,35 +119,21 @@ def init_state(p):
     p: path to root directory for which an inventory should be
       created.
     """
-    files = []
-    subdirs = []
-    for root, dirs, filenames in os.walk(p):
-        for subdir in dirs:
-            subdirs.append(os.path.relpath(os.path.join(root, subdir), p))
+    index = get_exifdata(p)
 
-        for f in filenames:
-            files.append(os.path.relpath(os.path.join(root, f), p))
+    files = [str(Path(key))
+             for key
+             in index]
 
-    def exifdata(output, root, f):
-        filepath = os.path.join(root, f)
-        outp = sp.check_output(['exiftool', '-j', '-xmp:Subject', '-xmp:HierarchicalSubject', filepath])
-        tag_dict = json.loads(outp)
-        output[f] = (os.path.getatime(filepath), os.path.getmtime(filepath), tag_dict[0].get('Subject', None), tag_dict[0].get('HierarchicalSubject', None))
+    index2 = {key:
+              index[key]
+              for key
+              in files}
 
-    index = {}
-    threads = []
-
-    for f in files:
-        exif_thread = Thread(target=exifdata, args=(index, p, f))
-        exif_thread.start()
-        threads.append(exif_thread)
-
-    for thread in threads:
-        thread.join()
-
-    index2 = {}
-    for f in files:
-        index2[os.path.basename(f)] = index[f]
+    subdirs = [str(dir.relative_to(p))
+               for dir
+               in Path(p).rglob('*')
+               if dir.is_dir()]
 
     return dict(files=files, subdirs=subdirs, index=index, index2=index2)
 
@@ -163,9 +169,10 @@ def compute_diff(dir_base, dir_cmp):
     return data
 
 def update_path_check_file(state, rootdir, filename):
-    """ Update the control file in which files with changing paths are recorded.
+    """
+    Update the control file with changing paths and tags of files.
 
-    state: dictionary with last known state
+    state: dictionary with last known state of rootdir and its subdirs
     rootdir: the path to the directory within which the files should be monitored
     filename: name of the file in which updates are recorded (the checkfile)
     """
