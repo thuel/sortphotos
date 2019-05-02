@@ -2,10 +2,9 @@ import tkinter as tk
 from tkinter import ttk
 from pathlib import Path
 from PIL import Image, ImageTk
-from scrollviews import VerticalScrollbarFrame
+import scrollviews
 import json
 import dill
-
 
 class ImageGallery(tk.Tk):
     def __init__(self, image_paths):
@@ -14,7 +13,7 @@ class ImageGallery(tk.Tk):
 
         self.ims = []
 
-        self.gallery_frame = VerticalScrollbarFrame(self)
+        self.gallery_frame = scrollviews.VerticalScrollbarFrame(self)
         self.image_frame = self.gallery_frame.content_frame
 
         self.geometry("1200x900")
@@ -63,16 +62,22 @@ class ImageGallery(tk.Tk):
         caption_lbl = ttk.Label(cell_frame, text=caption)
         caption_lbl.grid(column=0, row=1, sticky='nesw')
 
+        btn = self.btn_label(cell_frame)
+        btn.grid(column=0, row=2, sticky='nesw')
+
         return cell_frame
 
-    def remove_from_storage(self):
-        pass
+    def remove_from_storage(self, event):
+        print(event)
 
     def readd_to_storage(self):
         pass
 
     def btn_label(self, master):
-        pass
+        btn = tk.Label(master)
+        btn.config(text="Remove")
+        btn.bind('<Button-1>', self.remove_from_storage)
+        return btn
 
 if __name__ == '__main__':
 
